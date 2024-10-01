@@ -3,8 +3,24 @@ use cpal::{
     StreamConfig,
 };
 use std::sync::mpsc::{self, Receiver, Sender};
+use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Whisper Context Setup
+    let ctx =
+        WhisperContext::new_with_params("./ggml-small.bin", WhisperContextParameters::default())
+            .expect("Failed to create Whisper context");
+    let mut state = ctx.create_state().expect("Failed to create Whisper state");
+    let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+
+    params.set_n_threads(1);
+    params.set_translate(true);
+    params.set_language(Some("en"));
+    params.set_print_special(false);
+    params.set_print_progress(false);
+    params.set_print_realtime(true);
+    params.set_print_timestamps(false);
+
     // CPAL Audio Stream Setup
     let host = cpal::default_host();
 
@@ -12,11 +28,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input_device = host
         .default_input_device()
         .expect("Failed to get default input device");
-
-    // Output device and stream setup
-    let output_device = host
-        .default_output_device()
-        .expect("Failed to get default output device");
 
     let config: StreamConfig = input_device.default_input_config()?.into();
 
@@ -40,33 +51,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .expect("Failed to build input stream");
 
-    // Build the output stream
-    let output_stream = output_device
-        .build_output_stream(
-            &config,
-            move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                // Receive the audio data from the input stream
-                if let Ok(input_data) = rx.try_recv() {
-                    // Copy the input data to the output buffer
-                    for (out_sample, in_sample) in data.iter_mut().zip(input_data.iter()) {
-                        *out_sample = *in_sample;
-                    }
-                }
-            },
-            move |err| {
-                eprintln!("Error occurred on output stream: {}", err);
-            },
-            None,
-        )
-        .expect("Failed to build output stream");
-
-    // Start the streams
+    // Start the input stream
     input_stream.play().expect("Failed to start input stream");
-    output_stream.play().expect("Failed to start output stream");
 
-    println!("Audio streaming started. Press Ctrl+C to stop.");
+    if let Ok(audio_data) = rx.recv() {
+        // Convert f32 audio data to i16
+        let audio_data_i16: Vec<i16> = audio_data
+            .iter()
+            .map(|&sample| (sample * i16::MAX as f32) as i16)
+            .collect();
 
-    std::thread::sleep(std::time::Duration::from_secs(10));
+        // Convert to 16KHz mono f32 samples
+        let mut inter_audio_data = vec![0.0; audio_data_i16.len()];
+        whisper_rs::convert_integer_to_float_audio(&audio_data_i16, &mut inter_audio_data)
+            .expect("failed to convert audio data");
+        let audio_data_f32 = whisper_rs::convert_stereo_to_mono_audio(&inter_audio_data)
+            .expect("failed to convert audio data");
+
+        // Run the model
+        state
+            .full(params, &audio_data_f32[..])
+            .expect("failed to run model");
+
+        // Fetch the results
+        let num_segments = state
+            .full_n_segments()
+            .expect("failed to get number of segments");
+        for i in 0..num_segments {
+            let segment = state
+                .full_get_segment_text(i)
+                .expect("failed to get segment");
+            let start_timestamp = state
+                .full_get_segment_t0(i)
+                .expect("failed to get segment start timestamp");
+            let end_timestamp = state
+                .full_get_segment_t1(i)
+                .expect("failed to get segment end timestamp");
+            println!("[{} - {}]: {}", start_timestamp, end_timestamp, segment);
+        }
+    }
 
     Ok(())
 }
