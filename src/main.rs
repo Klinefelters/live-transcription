@@ -7,8 +7,7 @@ use std::time::Duration;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize VOSK model and recognizer
     vosk::init_vosk();
-    let frame_length = 512;
-    let recorder = PvRecorderBuilder::new(frame_length).init()?;
+    let recorder = PvRecorderBuilder::new(512).init()?;
     recorder.start()?;
 
     // Main loop for capturing audio and transcribing
