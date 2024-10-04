@@ -1,3 +1,6 @@
+// This code was adapted from https://github.com/Priler/jarvis/blob/master/app/src/stt/vosk.rs
+// Curtosy of Abraham Tugalov (aka Priler)
+
 use once_cell::sync::OnceCell;
 use vosk::{DecodingState, Model, Recognizer};
 
