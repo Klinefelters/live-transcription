@@ -17,13 +17,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Pass the frame data to Vosk for transcription
         if let Some(transcription) = vosk::recognize(&frame, true) {
             println!("{}", transcription);
+            if transcription.contains("stop") {
+                recorder.stop()?;
+            }
         }
 
         // Sleep for a bit to prevent high CPU usage
         thread::sleep(Duration::from_millis(10));
     }
     Ok(())
-
-    // Stop the recording (optional, since this example loops forever)
-    // pvrecorder::stop_recording().unwrap();
 }
