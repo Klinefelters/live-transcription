@@ -16,6 +16,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Pass the frame data to Vosk for transcription
         if let Some(transcription) = vosk::recognize(&frame, true) {
+            if transcription.is_empty() {
+                continue;
+            }
             println!("{}", transcription);
             if transcription.contains("stop") {
                 recorder.stop()?;
