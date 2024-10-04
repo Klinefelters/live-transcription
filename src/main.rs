@@ -1,72 +1,47 @@
-use cpal::{
-    traits::{DeviceTrait, HostTrait, StreamTrait},
-    StreamConfig,
-};
-use std::sync::mpsc::{self, Receiver, Sender};
+mod vosk;
+mod pvrecorder;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // CPAL Audio Stream Setup
-    let host = cpal::default_host();
+use std::thread;
+use std::time::Duration;
 
-    // Input device and stream setup
-    let input_device = host
-        .default_input_device()
-        .expect("Failed to get default input device");
+fn main() {
+    // Initialize VOSK model and recognizer
+    vosk::init_vosk();
 
-    // Output device and stream setup
-    let output_device = host
-        .default_output_device()
-        .expect("Failed to get default output device");
+    // Device index for the microphone (you can adjust this)
+    let device_index: i32 = 0;
+    // Frame length, typically 512 or 1024 (depends on your mic)
+    let frame_length: u32 = 512;
 
-    let config: StreamConfig = input_device.default_input_config()?.into();
+    // Initialize microphone
+    if !pvrecorder::init_microphone(device_index, frame_length) {
+        eprintln!("Failed to initialize microphone");
+        return;
+    }
 
-    // Create a channel to send audio data from the input stream to the output stream
-    let (tx, rx): (Sender<Vec<f32>>, Receiver<Vec<f32>>) = mpsc::channel();
+    // Start recording from the microphone
+    if let Err(_) = pvrecorder::start_recording(device_index, frame_length) {
+        eprintln!("Failed to start recording");
+        return;
+    }
 
-    // Build the input stream
-    let input_stream = input_device
-        .build_input_stream(
-            &config,
-            move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                // Send the audio data to the main thread
-                if let Err(err) = tx.send(data.to_vec()) {
-                    eprintln!("Failed to send audio data: {}", err);
-                }
-            },
-            move |err| {
-                eprintln!("Error occurred on input stream: {}", err);
-            },
-            None,
-        )
-        .expect("Failed to build input stream");
+    // Buffer for the audio data
+    let mut frame_buffer = vec![0i16; frame_length as usize];
 
-    // Build the output stream
-    let output_stream = output_device
-        .build_output_stream(
-            &config,
-            move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                // Receive the audio data from the input stream
-                if let Ok(input_data) = rx.try_recv() {
-                    // Copy the input data to the output buffer
-                    for (out_sample, in_sample) in data.iter_mut().zip(input_data.iter()) {
-                        *out_sample = *in_sample;
-                    }
-                }
-            },
-            move |err| {
-                eprintln!("Error occurred on output stream: {}", err);
-            },
-            None,
-        )
-        .expect("Failed to build output stream");
+    // Main loop for capturing audio and transcribing
+    loop {
+        // Read audio frame from microphone
+        pvrecorder::read_microphone(&mut frame_buffer);
 
-    // Start the streams
-    input_stream.play().expect("Failed to start input stream");
-    output_stream.play().expect("Failed to start output stream");
+        // Pass the frame data to Vosk for transcription
+        if let Some(transcription) = vosk::recognize(&frame_buffer, true) {
+            println!("{}", transcription);
+        }
 
-    println!("Audio streaming started. Press Ctrl+C to stop.");
+        // Sleep for a bit to prevent high CPU usage
+        thread::sleep(Duration::from_millis(10));
+    }
 
-    std::thread::sleep(std::time::Duration::from_secs(10));
-
-    Ok(())
+    // Stop the recording (optional, since this example loops forever)
+    // pvrecorder::stop_recording().unwrap();
 }
