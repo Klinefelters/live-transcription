@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-cpal = "0.15.3"
+pv_recorder = "1.2.3"
 whisper-rs = "0.11.1"
