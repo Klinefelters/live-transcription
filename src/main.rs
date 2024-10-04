@@ -1,12 +1,18 @@
-mod vosk;
 use pv_recorder::PvRecorderBuilder;
+use vosk::{DecodingState, Model, Recognizer};
 
 use std::thread;
 use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize VOSK model and recognizer
-    vosk::init_vosk();
+    let model = Model::new("./model").expect("Failed to load model");
+    let mut recognizer = Recognizer::new(&model, 16000.0).expect("Failed to create recognizer");
+    
+    recognizer.set_max_alternatives(10);
+    recognizer.set_words(true);
+    recognizer.set_partial_words(true);
+
     let recorder = PvRecorderBuilder::new(512).init()?;
     recorder.start()?;
     let mut last_transcription = String::new();
@@ -15,16 +21,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     while recorder.is_recording() {
         let frame = recorder.read()?;
 
-        // Pass the frame data to Vosk for transcription
-        if let Some(transcription) = vosk::recognize(&frame, true) {
-            if transcription.is_empty() || transcription == last_transcription {
-                last_transcription = transcription.clone();
-                continue;
+        let state = recognizer.accept_waveform(&frame);
+        
+        match state {
+            DecodingState::Running => {
+                let partial = recognizer.partial_result().partial.into();
+                if partial != last_transcription {
+                    println!("Partial: {}", partial);
+                    last_transcription = partial;
+                }
             }
-            last_transcription = transcription.clone();
-            println!("{}", transcription);
-            if transcription.contains("stop") {
-                recorder.stop()?;
+            DecodingState::Finalized => {
+                let result: String = recognizer.result()
+                    .multiple().
+                    unwrap().
+                    alternatives.
+                    first().
+                    unwrap().
+                    text.
+                    into();
+                
+                println!("Final: {}", result);
+                if result.contains("stop") {
+                    recorder.stop()?;
+                }
+            }
+            DecodingState::Failed => {
+                println!("Failed to decode audio");
             }
         }
 
