@@ -9,6 +9,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     vosk::init_vosk();
     let recorder = PvRecorderBuilder::new(512).init()?;
     recorder.start()?;
+    let mut last_transcription = String::new();
 
     // Main loop for capturing audio and transcribing
     while recorder.is_recording() {
@@ -16,9 +17,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Pass the frame data to Vosk for transcription
         if let Some(transcription) = vosk::recognize(&frame, true) {
-            if transcription.is_empty() {
+            if transcription.is_empty() || transcription == last_transcription {
+                last_transcription = transcription.clone();
                 continue;
             }
+            last_transcription = transcription.clone();
             println!("{}", transcription);
             if transcription.contains("stop") {
                 recorder.stop()?;
