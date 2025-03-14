@@ -4,5 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = "1.0.97"
 cpal = "0.15.3"
+once_cell = "1.21.1"
 vosk = "0.2.0"
