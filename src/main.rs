@@ -81,6 +81,9 @@ fn recognize<T: Sample + ToSample<i16>>(
     };
     let recognized = vosk::recognize(&data, true);
     if let Some(text) = recognized {
+        if text.is_empty() {
+            return;
+        }
         println!("Recognized: {}", text);
     }
 }
