@@ -6,8 +6,8 @@ use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize VOSK model and recognizer
-    let model = Model::new("./model").expect("Failed to load model");
-    //let model = Model::new("./model-es").ok_or("Failed to load Spanish model")?;
+    let model = Model::new("./model-English").expect("Failed to load English model");
+    //let model = Model::new("./model-Spanish").ok_or("Failed to load Spanish model")?;
     let mut recognizer = Recognizer::new(&model, 16000.0).expect("Failed to create recognizer");
     
     recognizer.set_max_alternatives(10);
